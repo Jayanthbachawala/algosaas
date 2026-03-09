@@ -1,0 +1,15 @@
+server:
+  retention: 15d
+  persistentVolume:
+    enabled: true
+    size: 50Gi
+extraScrapeConfigs: |
+  - job_name: 'algosaas-services'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: ['algosaas']
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        regex: '.*service|api-gateway'
+        action: keep

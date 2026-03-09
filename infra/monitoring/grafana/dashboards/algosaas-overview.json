@@ -1,0 +1,12 @@
+{
+  "title": "AlgoSaaS Platform Overview",
+  "panels": [
+    {"type": "timeseries", "title": "API Latency p95", "targets": [{"expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service))"}]},
+    {"type": "timeseries", "title": "Kafka Consumer Lag", "targets": [{"expr": "sum(kafka_consumergroup_lag) by (consumergroup)"}]},
+    {"type": "timeseries", "title": "Redis Memory", "targets": [{"expr": "redis_memory_used_bytes"}]},
+    {"type": "timeseries", "title": "Signal Generation Rate", "targets": [{"expr": "sum(rate(signals_generated_total[5m]))"}]},
+    {"type": "timeseries", "title": "Active Users", "targets": [{"expr": "sum(active_user_sessions)"}]}
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: algosaas-config
+  namespace: algosaas
+data:
+  ENVIRONMENT: production
+  POSTGRES_HOST: algosaas-postgres-rw.db.svc.cluster.local
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: algosaas
+  REDIS_URL: redis://algosaas-redis-master.cache.svc.cluster.local:6379/0
+  KAFKA_BOOTSTRAP_SERVERS: algosaas-kafka.kafka.svc.cluster.local:9092
+  API_GATEWAY_URL: http://api-gateway
+  RISK_MANAGEMENT_SERVICE_URL: http://risk-management-service
+  SIGNAL_ENGINE_SERVICE_URL: http://signal-engine-service

@@ -1,0 +1,280 @@
+global:
+  postgresHost: algosaas-postgres-rw.db.svc.cluster.local
+  postgresPort: "5432"
+  postgresDb: algosaas
+  redisUrl: redis://algosaas-redis-master.cache.svc.cluster.local:6379/0
+  kafkaBootstrapServers: algosaas-kafka.kafka.svc.cluster.local:9092
+
+secrets:
+  postgresUser: algosaas
+  postgresPassword: change-me
+  jwtSecret: change-me
+
+ingress:
+  apiHost: api.algosaas.com
+
+services:
+  api-gateway:
+    enabled: true
+    image: ghcr.io/algosaas/api-gateway:latest
+    port: 8000
+    replicas: 3
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 20
+      cpuUtilization: 60
+      memoryUtilization: 70
+  user-service:
+    enabled: true
+    image: ghcr.io/algosaas/user-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  auth-service:
+    enabled: true
+    image: ghcr.io/algosaas/auth-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  subscription-service:
+    enabled: true
+    image: ghcr.io/algosaas/subscription-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  billing-service:
+    enabled: true
+    image: ghcr.io/algosaas/billing-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  portfolio-service:
+    enabled: true
+    image: ghcr.io/algosaas/portfolio-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  trade-history-service:
+    enabled: true
+    image: ghcr.io/algosaas/trade-history-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  feature-engineering-service:
+    enabled: true
+    image: ghcr.io/algosaas/feature-engineering-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  prediction-service:
+    enabled: true
+    image: ghcr.io/algosaas/prediction-service:latest
+    port: 8000
+    replicas: 3
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 20
+      cpuUtilization: 60
+      memoryUtilization: 70
+  signal-engine-service:
+    enabled: true
+    image: ghcr.io/algosaas/signal-engine-service:latest
+    port: 8000
+    replicas: 3
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 20
+      cpuUtilization: 60
+      memoryUtilization: 70
+  reinforcement-learning-service:
+    enabled: true
+    image: ghcr.io/algosaas/reinforcement-learning-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  risk-management-service:
+    enabled: true
+    image: ghcr.io/algosaas/risk-management-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  broker-gateway-service:
+    enabled: true
+    image: ghcr.io/algosaas/broker-gateway-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  options-flow-service:
+    enabled: true
+    image: ghcr.io/algosaas/options-flow-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  volatility-surface-service:
+    enabled: true
+    image: ghcr.io/algosaas/volatility-surface-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  order-flow-service:
+    enabled: true
+    image: ghcr.io/algosaas/order-flow-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  notification-service:
+    enabled: true
+    image: ghcr.io/algosaas/notification-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  kill-switch-service:
+    enabled: true
+    image: ghcr.io/algosaas/kill-switch-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  admin-service:
+    enabled: true
+    image: ghcr.io/algosaas/admin-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  market-data-service:
+    enabled: true
+    image: ghcr.io/algosaas/market-data-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  option-chain-service:
+    enabled: true
+    image: ghcr.io/algosaas/option-chain-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  scanner-service:
+    enabled: true
+    image: ghcr.io/algosaas/scanner-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  paper-trading-service:
+    enabled: true
+    image: ghcr.io/algosaas/paper-trading-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
+  ai-model-service:
+    enabled: true
+    image: ghcr.io/algosaas/ai-model-service:latest
+    port: 8000
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 8
+      cpuUtilization: 70
+      memoryUtilization: 75
