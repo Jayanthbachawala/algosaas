@@ -1,5 +1,6 @@
 import secrets
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -9,15 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from services.common.database import get_db_session
 from services.common.redis_client import redis_client
 
-app = FastAPI(title="AuthService", version="2.0.0")
+app = FastAPI(title="AuthService", version="1.0.0")
 TOKEN_TTL_SECONDS = 60 * 60 * 8
-
-
-class RegisterIn(BaseModel):
-    email: EmailStr
-    password_hash: str
-    full_name: str | None = None
-    phone: str | None = None
 
 
 class LoginIn(BaseModel):
@@ -34,45 +28,17 @@ async def shutdown_event() -> None:
     await redis_client.close()
 
 
-@app.post("/auth/register")
-async def register(payload: RegisterIn, db: AsyncSession = Depends(get_db_session)):
-    row = (
-        await db.execute(
-            text(
-                """
-                INSERT INTO users(email, password_hash, full_name, phone, status)
-                VALUES (:email, :password_hash, :full_name, :phone, 'pending_verification')
-                ON CONFLICT (email) DO NOTHING
-                RETURNING id, email, status
-                """
-            ),
-            payload.model_dump(),
-        )
-    ).mappings().first()
-    if not row:
-        raise HTTPException(status_code=409, detail="Email already exists")
-
-    token = secrets.token_urlsafe(24)
-    await redis_client.setex(f"verify:{token}", 3600, str(row["id"]))
-    return {"user_id": str(row["id"]), "email": row["email"], "verification_token": token}
-
-
-@app.post("/auth/verify-email")
-async def verify_email(token: str, db: AsyncSession = Depends(get_db_session)):
-    user_id = await redis_client.get(f"verify:{token}")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
-    await db.execute(text("UPDATE users SET status='active', updated_at=now() WHERE id=:id"), {"id": user_id})
-    await redis_client.delete(f"verify:{token}")
-    return {"verified": True, "user_id": user_id}
-
-
-@app.post("/auth/login")
 @app.post("/v1/auth/login")
 async def login(payload: LoginIn, db: AsyncSession = Depends(get_db_session)):
     user = (
         await db.execute(
-            text("SELECT id, email, password_hash, status FROM users WHERE email = :email"),
+            text(
+                """
+                SELECT id, email, password_hash, status
+                FROM users
+                WHERE email = :email
+                """
+            ),
             {"email": payload.email},
         )
     ).mappings().first()
@@ -85,12 +51,23 @@ async def login(payload: LoginIn, db: AsyncSession = Depends(get_db_session)):
     refresh_token = secrets.token_urlsafe(48)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=TOKEN_TTL_SECONDS)
 
-    await redis_client.hset(f"auth:access:{access_token}", mapping={"user_id": str(user["id"]), "email": user["email"], "expires_at": expires_at.isoformat()})
+    session_payload = {
+        "user_id": str(user["id"]),
+        "email": user["email"],
+        "expires_at": expires_at.isoformat(),
+    }
+    await redis_client.hset(f"auth:access:{access_token}", mapping=session_payload)
     await redis_client.expire(f"auth:access:{access_token}", TOKEN_TTL_SECONDS)
     await redis_client.hset(f"auth:refresh:{refresh_token}", mapping={"user_id": str(user["id"])})
     await redis_client.expire(f"auth:refresh:{refresh_token}", TOKEN_TTL_SECONDS * 7)
 
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer", "expires_at": expires_at.isoformat(), "user_id": str(user["id"]), "email": user["email"]}
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_at": expires_at.isoformat(),
+        "user_id": str(user["id"]),
+    }
 
 
 @app.post("/v1/auth/refresh")
@@ -102,7 +79,10 @@ async def refresh(payload: RefreshIn):
 
     new_access = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=TOKEN_TTL_SECONDS)
-    await redis_client.hset(f"auth:access:{new_access}", mapping={"user_id": user_id, "expires_at": expires_at.isoformat()})
+    await redis_client.hset(
+        f"auth:access:{new_access}",
+        mapping={"user_id": user_id, "expires_at": expires_at.isoformat()},
+    )
     await redis_client.expire(f"auth:access:{new_access}", TOKEN_TTL_SECONDS)
 
     return {"access_token": new_access, "token_type": "bearer", "expires_at": expires_at.isoformat()}
@@ -120,6 +100,24 @@ async def validate(access_token: str):
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return {"valid": True, "session": session}
+
+
+@app.get("/v1/auth/user/{user_id}/brokers")
+async def authorized_brokers(user_id: UUID, db: AsyncSession = Depends(get_db_session)):
+    rows = (
+        await db.execute(
+            text(
+                """
+                SELECT broker_name, client_code, status, token_expires_at
+                FROM broker_connections
+                WHERE user_id = :user_id
+                ORDER BY created_at DESC
+                """
+            ),
+            {"user_id": user_id},
+        )
+    ).mappings().all()
+    return {"user_id": str(user_id), "brokers": [dict(r) for r in rows]}
 
 
 @app.get("/health")

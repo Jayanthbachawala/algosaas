@@ -12,17 +12,10 @@ from services.common.database import get_db_session
 from services.common.kafka_client import KafkaConsumerClient, KafkaProducerClient
 from services.common.redis_client import redis_client
 
-app = FastAPI(title="ReinforcementLearningService", version="2.0.0")
+app = FastAPI(title="ReinforcementLearningService", version="1.0.0")
 producer = KafkaProducerClient()
 consumer = KafkaConsumerClient(settings.execution_outcome_topic, "reinforcement-learning-service")
 consumer_task: asyncio.Task | None = None
-
-ACTIONS = ["buy_call", "buy_put", "spread", "no_trade"]
-
-
-class RLState(BaseModel):
-    symbol: str
-    market_features: dict
 
 
 class ExperienceIn(BaseModel):
@@ -34,29 +27,10 @@ class ExperienceIn(BaseModel):
     entry_price: float
     exit_price: float
     pnl: float
-    transaction_cost: float = 0.0
-    risk_penalty: float = 0.0
-    action: str = "no_trade"
-
-
-def _policy_action(state: RLState) -> str:
-    momentum = float(state.market_features.get("price_momentum", 0))
-    iv = float(state.market_features.get("implied_volatility", 0))
-    if momentum > 0.02:
-        return "buy_call"
-    if momentum < -0.02:
-        return "buy_put"
-    if iv > 30:
-        return "spread"
-    return "no_trade"
-
-
-def _reward(payload: ExperienceIn) -> float:
-    return round(payload.pnl - payload.transaction_cost - payload.risk_penalty, 6)
 
 
 async def _store_experience(payload: ExperienceIn, db: AsyncSession) -> dict:
-    reward = _reward(payload)
+    reward = round(payload.pnl - max(0.0, payload.iv_level - 40) * 0.05, 4)
     label = payload.pnl > 0
 
     await db.execute(
@@ -88,27 +62,17 @@ async def _store_experience(payload: ExperienceIn, db: AsyncSession) -> dict:
                     "iv_level": payload.iv_level,
                     "entry_price": payload.entry_price,
                     "exit_price": payload.exit_price,
-                    "action": payload.action,
-                    "transaction_cost": payload.transaction_cost,
-                    "risk_penalty": payload.risk_penalty,
                 }
             ),
             "label_profitable": label,
         },
     )
 
-    policy_value_raw = await redis_client.get(f"rl:policy:{payload.symbol}")
-    policy_value = float(policy_value_raw) if policy_value_raw else 0.5
-    updated_policy_value = max(0.0, min(1.0, policy_value + reward / 10000))
-    await redis_client.set(f"rl:policy:{payload.symbol}", updated_policy_value)
-
     update = {
         "symbol": payload.symbol,
         "reward": reward,
         "pnl": payload.pnl,
         "label_profitable": label,
-        "action": payload.action,
-        "policy_value": updated_policy_value,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     await redis_client.hset(f"rl:last:{payload.symbol}", mapping={k: str(v) for k, v in update.items()})
@@ -128,9 +92,6 @@ async def _consume_outcomes() -> None:
             entry_price=float(event.get("entry_price", 0.0)),
             exit_price=float(event.get("exit_price", 0.0)),
             pnl=float(event.get("pnl", 0.0)),
-            transaction_cost=float(event.get("transaction_cost", 0.0)),
-            risk_penalty=float(event.get("risk_penalty", 0.0)),
-            action=event.get("action", "no_trade"),
         )
         async for db in get_db_session():
             update = await _store_experience(payload, db)
@@ -160,12 +121,6 @@ async def shutdown_event() -> None:
     await consumer.stop()
     await producer.stop()
     await redis_client.close()
-
-
-@app.post("/v1/rl/agent/action")
-async def select_action(state: RLState):
-    action = _policy_action(state)
-    return {"symbol": state.symbol, "action": action}
 
 
 @app.post("/v1/rl/experience")

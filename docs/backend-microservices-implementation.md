@@ -1,99 +1,74 @@
-# AlgoSaaS Platform Implementation (AI Brain v3 + SaaS Layer)
+# Backend + Frontend Implementation (Phase-1 to Phase-4 + Broker Integration)
 
-## SaaS Platform Layer (Commercial)
-Implemented business/user-management capabilities required for production SaaS operations.
+Implemented Python FastAPI services with Redis caching, Kafka event streaming, PostgreSQL persistence, React dashboard, and production-grade broker integrations.
 
-### Core SaaS Services
-- `AuthService` (self-signup, email verification, login)
-- `UserService` (user profile + broker integrations)
-- `SubscriptionService` (plans, subscribe, feature entitlements, overrides)
-- `BillingService` (invoices, paid revenue)
-- `NotificationService` (signal/trade/risk/subscription reminders)
-- `AdminService` (master admin dashboard + controls)
+## Implemented Services
+### Phase-1
+- MarketDataService
+- OptionChainService
+- ScannerService
+- SignalEngineService
 
-### Subscription Plans
-- Basic
-- Pro
-- Premium
+### Phase-2
+- AIModelService
+- FeatureEngineeringService
+- PredictionService
+- ReinforcementLearningService
+- PaperTradingService
+- RiskManagementService
+- KillSwitchService
+- BrokerGatewayService
 
-### Feature Entitlements
-Features:
-- `signals_access`
-- `scanner_access`
-- `ai_insights`
-- `paper_trading`
-- `auto_trading`
-- `broker_connect`
-- `portfolio_analytics`
-- `advanced_strategies`
-- `backtesting`
-- `priority_signals`
+### Phase-3
+- UserService
+- AuthService
+- SubscriptionService
+- BillingService
+- PortfolioService
+- TradeHistoryService
+- NotificationService
 
-Evaluation order:
-1) user override (`user_feature_overrides`)
-2) plan feature (`plan_features`)
+### Phase-4
+- API Gateway (`services/api-gateway/app/main.py`)
+- React Trading Dashboard (`frontend/dashboard`)
 
-### New APIs
-#### Auth
-- `POST /auth/register`
-- `POST /auth/verify-email`
-- `POST /auth/login`
+## Broker Integration Scope
+Implemented adapters and OAuth lifecycle for:
+- Zerodha
+- Upstox
+- Dhan
+- Shoonya
 
-#### Subscriptions
-- `GET /plans`
-- `POST /subscribe`
-- `GET /v1/subscriptions/{user_id}/entitlements`
-- `POST /v1/subscriptions/override`
+### Broker Gateway Endpoints
+- `POST /v1/broker/oauth/connect`
+- `GET /v1/broker/oauth/{broker}/callback`
+- `POST /v1/broker/auth/refresh`
+- `POST /v1/broker/orders`
+- `GET /v1/broker/positions/{user_id}/{broker_name}`
+- `GET /v1/broker/orders/{broker_name}/{broker_order_id}/confirmation?user_id=...`
 
-#### Notifications
-- `POST /v1/notifications/send`
-- `GET /v1/notifications/user/{user_id}`
+### API Gateway Broker Endpoints
+- `POST /api/v1/broker/oauth/connect`
+- `GET /api/v1/broker/oauth/{broker}/callback`
+- `POST /api/v1/broker/auth/refresh`
+- `GET /api/v1/broker/{user_id}/{broker_name}/positions`
+- `GET /api/v1/broker/{user_id}/{broker_name}/orders/{broker_order_id}/confirmation`
+- `POST /api/v1/trade/execute/live` (risk check + broker order + execution confirmation)
 
-#### Admin
-- `GET /v1/admin/dashboard`
-- `GET /v1/admin/users`
-- `POST /v1/admin/users/status`
-- `POST /v1/admin/users/change-plan`
-- `POST /v1/admin/users/grant-trial`
-- `GET /v1/admin/monitoring`
-- `GET /v1/admin/signals/performance`
-- `POST /admin/disable-trading`
-- `POST /admin/enable-trading`
+## Environment Configuration
+Use `.env.example` as the template for:
+- Service base URLs for API Gateway
+- OAuth credentials and endpoint overrides for all supported brokers
 
-### Kill Switch Integration
-When `/admin/disable-trading` is called, `killswitch:global=1` is set in Redis.
-`RiskManagementService` now blocks all trades while global kill-switch is active.
-
-## AI Trading Brain v3 Layer
-- FeatureEngineering v3
-- OptionsFlowService
-- VolatilitySurfaceService
-- OrderFlowService
-- PredictionService ensemble
-- ReinforcementLearningService policy/reward loop
-- SignalEngine v3 meta-decision with risk filter
-
-## Frontend Additions
-### Dashboard Components
-- Admin Dashboard
-- AI Insights panel
-- Notifications panel
-- Broker connection page
-- Subscription management page
-
-### Marketing Website
-- Public pages: Home, Features, Pricing, Login, Signup, Documentation
-- Static site entry: `frontend/marketing/index.html`
-
-## Monitoring Dashboard Data
-Admin monitoring endpoint provides:
-- Redis memory usage
-- active sessions
-- monitoring metric series
-
-## Run (SaaS + Brain v3)
+## Run
 ```bash
+# backend services + infra
 docker compose -f infra/local/docker-compose.yml up -d
-uvicorn app.main:app --app-dir services/admin-service --port 8024 --reload
+uvicorn app.main:app --app-dir services/broker-gateway-service --port 8012 --reload
 uvicorn app.main:app --app-dir services/api-gateway --port 8020 --reload
+
+# frontend
+cd frontend/dashboard
+npm install
+npm run dev
 ```

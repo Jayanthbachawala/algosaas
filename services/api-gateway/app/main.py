@@ -6,7 +6,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="APIGateway", version="3.0.0")
+app = FastAPI(title="APIGateway", version="2.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,14 +28,16 @@ SERVICES = {
     "broker": os.getenv("BROKER_GATEWAY_SERVICE_URL", "http://localhost:8012"),
     "prediction": os.getenv("PREDICTION_SERVICE_URL", "http://localhost:8007"),
     "risk": os.getenv("RISK_SERVICE_URL", "http://localhost:8010"),
-    "options_flow": os.getenv("OPTIONS_FLOW_SERVICE_URL", "http://localhost:8021"),
-    "vol_surface": os.getenv("VOLATILITY_SURFACE_SERVICE_URL", "http://localhost:8022"),
-    "order_flow": os.getenv("ORDER_FLOW_SERVICE_URL", "http://localhost:8023"),
-    "admin": os.getenv("ADMIN_SERVICE_URL", "http://localhost:8024"),
 }
 
 
-async def _proxy(method: str, service: str, path: str, body: dict[str, Any] | None = None, params: dict[str, Any] | None = None):
+async def _proxy(
+    method: str,
+    service: str,
+    path: str,
+    body: dict[str, Any] | None = None,
+    params: dict[str, Any] | None = None,
+):
     if service not in SERVICES:
         raise HTTPException(status_code=404, detail="Unknown service")
     url = f"{SERVICES[service]}{path}"
@@ -46,30 +48,14 @@ async def _proxy(method: str, service: str, path: str, body: dict[str, Any] | No
     return response.json() if response.content else {"ok": True}
 
 
-async def _require_feature(user_id: str, feature_key: str):
-    ent = await _proxy("GET", "subscription", f"/v1/subscriptions/{user_id}/entitlements")
-    if not ent.get("features", {}).get(feature_key, False):
-        raise HTTPException(status_code=403, detail=f"Feature '{feature_key}' not enabled")
-
-
-@app.post("/api/v1/auth/register")
-async def register(payload: dict[str, Any]):
-    return await _proxy("POST", "auth", "/auth/register", body=payload)
-
-
 @app.post("/api/v1/auth/login")
 async def login(payload: dict[str, Any]):
-    return await _proxy("POST", "auth", "/auth/login", body=payload)
+    return await _proxy("POST", "auth", "/v1/auth/login", body=payload)
 
 
-@app.get("/api/v1/plans")
-async def plans():
-    return await _proxy("GET", "subscription", "/plans")
-
-
-@app.post("/api/v1/subscribe")
-async def subscribe(payload: dict[str, Any]):
-    return await _proxy("POST", "subscription", "/subscribe", body=payload)
+@app.post("/api/v1/auth/refresh")
+async def refresh(payload: dict[str, Any]):
+    return await _proxy("POST", "auth", "/v1/auth/refresh", body=payload)
 
 
 @app.get("/api/v1/users/{user_id}/profile")
@@ -83,24 +69,44 @@ async def dashboard(user_id: str):
     portfolio = await _proxy("GET", "portfolio", f"/v1/portfolio/{user_id}/summary")
     exposure = await _proxy("GET", "portfolio", f"/v1/portfolio/{user_id}/exposure")
     orders = await _proxy("GET", "history", f"/v1/trades/{user_id}/orders", params={"limit": 20})
-    subscription = await _proxy("GET", "subscription", f"/v1/subscriptions/{user_id}/entitlements")
-    ai_insights = await _proxy("GET", "brain", f"/api/v1/brain/NIFTY") if False else {}
-    return {"signals": signals, "portfolio": portfolio, "exposure": exposure, "orders": orders, "subscription": subscription, "ai_insights": ai_insights}
+    subscription = await _proxy("GET", "subscription", f"/v1/subscriptions/{user_id}")
+    return {
+        "signals": signals,
+        "portfolio": portfolio,
+        "exposure": exposure,
+        "orders": orders,
+        "subscription": subscription,
+    }
 
 
 @app.post("/api/v1/trade/execute/live")
 async def execute_live(payload: dict[str, Any]):
-    await _require_feature(str(payload["user_id"]), "auto_trading")
-    risk = await _proxy("POST", "risk", "/v1/risk/check", body={"user_id": payload["user_id"], "symbol": payload["symbol"], "quantity": payload["quantity"], "entry_price": payload.get("price", payload.get("entry_price", 0)), "implied_volatility": payload.get("implied_volatility", 0), "bid_ask_spread": payload.get("bid_ask_spread", 0)})
+    risk = await _proxy(
+        "POST",
+        "risk",
+        "/v1/risk/check",
+        body={
+            "user_id": payload["user_id"],
+            "symbol": payload["symbol"],
+            "quantity": payload["quantity"],
+            "entry_price": payload.get("price", payload.get("entry_price", 0)),
+            "implied_volatility": payload.get("implied_volatility", 0),
+        },
+    )
     if not risk.get("allowed"):
         return {"executed": False, "risk": risk}
     order = await _proxy("POST", "broker", "/v1/broker/orders", body=payload)
-    return {"executed": True, "order": order, "risk": risk}
+    confirmation = await _proxy(
+        "GET",
+        "broker",
+        f"/v1/broker/orders/{payload['broker_name']}/{order['broker_order_id']}/confirmation",
+        params={"user_id": payload["user_id"]},
+    )
+    return {"executed": True, "order": order, "risk": risk, "confirmation": confirmation}
 
 
 @app.post("/api/v1/trade/execute/paper")
 async def execute_paper(payload: dict[str, Any]):
-    await _require_feature(str(payload["user_id"]), "paper_trading")
     paper_url = os.getenv("PAPER_TRADING_SERVICE_URL", "http://localhost:8009")
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(f"{paper_url}/v1/paper/orders", json=payload)
@@ -109,53 +115,39 @@ async def execute_paper(payload: dict[str, Any]):
     return response.json()
 
 
-@app.get("/api/v1/brain/{symbol}")
-async def brain_context(symbol: str):
-    options_flow = await _proxy("GET", "options_flow", f"/v1/options-flow/{symbol}")
-    vol_surface = await _proxy("GET", "vol_surface", f"/v1/volsurface/{symbol}")
-    order_flow = await _proxy("GET", "order_flow", f"/v1/orderflow/{symbol}")
-    return {"symbol": symbol, "options_flow": options_flow, "vol_surface": vol_surface, "order_flow": order_flow}
+@app.post("/api/v1/broker/oauth/connect")
+async def broker_oauth_connect(payload: dict[str, Any]):
+    return await _proxy("POST", "broker", "/v1/broker/oauth/connect", body=payload)
 
 
-@app.post("/api/v1/notifications/send")
-async def send_notification(payload: dict[str, Any]):
-    return await _proxy("POST", "notification", "/v1/notifications/send", body=payload)
+@app.get("/api/v1/broker/oauth/{broker}/callback")
+async def broker_oauth_callback(broker: str, code: str = Query(...), state: str = Query(...)):
+    return await _proxy(
+        "GET",
+        "broker",
+        f"/v1/broker/oauth/{broker}/callback",
+        params={"code": code, "state": state},
+    )
 
 
-@app.get("/api/v1/notifications/user/{user_id}")
-async def user_notifications(user_id: str):
-    return await _proxy("GET", "notification", f"/v1/notifications/{user_id}")
+@app.post("/api/v1/broker/auth/refresh")
+async def broker_refresh(payload: dict[str, Any]):
+    return await _proxy("POST", "broker", "/v1/broker/auth/refresh", body=payload)
 
 
-# Admin routes
-@app.get("/api/v1/admin/dashboard")
-async def admin_dashboard():
-    return await _proxy("GET", "admin", "/v1/admin/dashboard")
+@app.get("/api/v1/broker/{user_id}/{broker_name}/positions")
+async def broker_positions(user_id: str, broker_name: str):
+    return await _proxy("GET", "broker", f"/v1/broker/positions/{user_id}/{broker_name}")
 
 
-@app.get("/api/v1/admin/users")
-async def admin_users():
-    return await _proxy("GET", "admin", "/v1/admin/users")
-
-
-@app.post("/api/v1/admin/disable-trading")
-async def disable_trading():
-    return await _proxy("POST", "admin", "/admin/disable-trading")
-
-
-@app.post("/api/v1/admin/enable-trading")
-async def enable_trading():
-    return await _proxy("POST", "admin", "/admin/enable-trading")
-
-
-@app.get("/api/v1/admin/monitoring")
-async def admin_monitoring():
-    return await _proxy("GET", "admin", "/v1/admin/monitoring")
-
-
-@app.get("/api/v1/admin/signals/performance")
-async def signal_performance():
-    return await _proxy("GET", "admin", "/v1/admin/signals/performance")
+@app.get("/api/v1/broker/{user_id}/{broker_name}/orders/{broker_order_id}/confirmation")
+async def broker_execution_confirmation(user_id: str, broker_name: str, broker_order_id: str):
+    return await _proxy(
+        "GET",
+        "broker",
+        f"/v1/broker/orders/{broker_name}/{broker_order_id}/confirmation",
+        params={"user_id": user_id},
+    )
 
 
 @app.websocket("/ws/market/{symbol}")
@@ -169,7 +161,13 @@ async def ws_market(websocket: WebSocket, symbol: str):
                 tick_task = client.get(f"{market_url}/v1/market/ticks/{symbol}")
                 signal_task = client.get(f"{signal_url}/v1/signals/panel")
                 tick_resp, signal_resp = await asyncio.gather(tick_task, signal_task)
-            await websocket.send_json({"symbol": symbol, "tick": tick_resp.json() if tick_resp.status_code == 200 else None, "signals": signal_resp.json().get("signals", [])[:5] if signal_resp.status_code == 200 else []})
+
+            payload = {
+                "symbol": symbol,
+                "tick": tick_resp.json() if tick_resp.status_code == 200 else None,
+                "signals": signal_resp.json().get("signals", [])[:5] if signal_resp.status_code == 200 else [],
+            }
+            await websocket.send_json(payload)
             await asyncio.sleep(1.5)
     except WebSocketDisconnect:
         return

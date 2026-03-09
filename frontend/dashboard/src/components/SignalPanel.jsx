@@ -17,7 +17,7 @@ export default function SignalPanel({ signals = [] }) {
               <td>{s.entry_price}</td>
               <td>{s.stop_loss}</td>
               <td>{s.target}</td>
-              <td>{s.probability ?? s.ai_probability_score ?? s.probability_score}</td>
+              <td>{s.ai_probability_score ?? s.probability_score}</td>
             </tr>
           ))}
         </tbody>

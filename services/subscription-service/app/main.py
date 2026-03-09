@@ -1,5 +1,5 @@
-import json
 from datetime import datetime, timedelta, timezone
+import json
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -8,32 +8,21 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.common.database import get_db_session
-from services.common.entitlements import resolve_feature_access
 from services.common.redis_client import redis_client
 
-app = FastAPI(title="SubscriptionService", version="2.0.0")
+app = FastAPI(title="SubscriptionService", version="1.0.0")
 
-from services.common.saas_logic import PLAN_FEATURES
-
-PLAN_MATRIX = PLAN_FEATURES
-
-
-class PlanIn(BaseModel):
-    name: str
-    price: float
-    billing_cycle: str = "monthly"
+PLAN_FEATURES = {
+    "Basic": {"signals_per_day": 20, "paper_trading": True, "live_trading": False},
+    "Pro": {"signals_per_day": 200, "paper_trading": True, "live_trading": True},
+    "Premium": {"signals_per_day": 1000, "paper_trading": True, "live_trading": True},
+}
 
 
-class SubscribeIn(BaseModel):
+class SubscriptionIn(BaseModel):
     user_id: UUID
-    plan_name: str
+    plan_code: str
     duration_days: int = 30
-
-
-class OverrideIn(BaseModel):
-    user_id: UUID
-    feature_key: str
-    enabled: bool
 
 
 @app.on_event("shutdown")
@@ -41,133 +30,85 @@ async def shutdown_event() -> None:
     await redis_client.close()
 
 
-async def _ensure_seed_data(db: AsyncSession):
-    # seed plans
-    for name, price in (("Basic", 999), ("Pro", 2499), ("Premium", 4999)):
-        await db.execute(
-            text(
-                """
-                INSERT INTO plans(name, price, billing_cycle)
-                VALUES (:name, :price, 'monthly')
-                ON CONFLICT (name) DO NOTHING
-                """
-            ),
-            {"name": name, "price": price},
-        )
-
-    # seed features
-    for feature_key in PLAN_MATRIX["Premium"].keys():
-        await db.execute(
-            text(
-                """
-                INSERT INTO features(feature_key, description)
-                VALUES (:feature_key, :description)
-                ON CONFLICT (feature_key) DO NOTHING
-                """
-            ),
-            {"feature_key": feature_key, "description": feature_key.replace("_", " ")},
-        )
-
-    # seed plan_features
-    for plan, features in PLAN_MATRIX.items():
-        plan_id = (
-            await db.execute(text("SELECT id FROM plans WHERE name=:name"), {"name": plan})
-        ).scalar_one()
-        for key, enabled in features.items():
-            feature_id = (
-                await db.execute(text("SELECT id FROM features WHERE feature_key=:k"), {"k": key})
-            ).scalar_one()
-            await db.execute(
-                text(
-                    """
-                    INSERT INTO plan_features(plan_id, feature_id, enabled)
-                    VALUES (:plan_id, :feature_id, :enabled)
-                    ON CONFLICT (plan_id, feature_id)
-                    DO UPDATE SET enabled = EXCLUDED.enabled
-                    """
-                ),
-                {"plan_id": plan_id, "feature_id": feature_id, "enabled": enabled},
-            )
-
-
-@app.post("/v1/plans/seed")
-async def seed(db: AsyncSession = Depends(get_db_session)):
-    await _ensure_seed_data(db)
-    return {"seeded": True}
-
-
-@app.get("/plans")
-@app.get("/v1/plans")
-async def plans(db: AsyncSession = Depends(get_db_session)):
-    await _ensure_seed_data(db)
-    rows = (await db.execute(text("SELECT id, name, price, billing_cycle FROM plans ORDER BY price"))).mappings().all()
-    return {"plans": [dict(r) for r in rows]}
-
-
-@app.post("/subscribe")
 @app.post("/v1/subscriptions")
-async def subscribe(payload: SubscribeIn, db: AsyncSession = Depends(get_db_session)):
-    await _ensure_seed_data(db)
-    plan = (
-        await db.execute(text("SELECT id, name FROM plans WHERE name=:name"), {"name": payload.plan_name})
-    ).mappings().first()
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan not found")
+async def create_subscription(payload: SubscriptionIn, db: AsyncSession = Depends(get_db_session)):
+    if payload.plan_code not in PLAN_FEATURES:
+        raise HTTPException(status_code=400, detail="Unsupported plan")
 
-    start = datetime.now(timezone.utc)
-    end = start + timedelta(days=payload.duration_days)
+    start_at = datetime.now(timezone.utc)
+    end_at = start_at + timedelta(days=payload.duration_days)
 
-    sub = (
+    row = (
         await db.execute(
             text(
                 """
-                INSERT INTO subscriptions(user_id, plan_id, plan_code, status, start_at, end_at, start_date, end_date, features)
-                VALUES (:user_id, :plan_id, :plan_code, 'active', :start, :end, :start, :end, CAST(:features as jsonb))
-                RETURNING id, user_id, plan_id, plan_code, status, start_date, end_date
+                INSERT INTO subscriptions(user_id, plan_code, status, start_at, end_at, features)
+                VALUES (:user_id, :plan_code, 'active', :start_at, :end_at, CAST(:features AS jsonb))
+                RETURNING id, user_id, plan_code, status, start_at, end_at, features
                 """
             ),
             {
                 "user_id": payload.user_id,
-                "plan_id": plan["id"],
-                "plan_code": plan["name"],
-                "start": start,
-                "end": end,
-                "features": json.dumps(PLAN_MATRIX[plan["name"]]),
+                "plan_code": payload.plan_code,
+                "start_at": start_at,
+                "end_at": end_at,
+                "features": json.dumps(PLAN_FEATURES[payload.plan_code]),
             },
         )
     ).mappings().one()
-    await redis_client.hset(f"subscription:{payload.user_id}", mapping={k: str(v) for k, v in dict(sub).items()})
-    return dict(sub)
+
+    await redis_client.hset(f"subscription:{payload.user_id}", mapping={k: str(v) for k, v in dict(row).items()})
+    return dict(row)
+
+
+@app.get("/v1/subscriptions/{user_id}")
+async def get_subscription(user_id: UUID, db: AsyncSession = Depends(get_db_session)):
+    cached = await redis_client.hgetall(f"subscription:{user_id}")
+    if cached:
+        return {"source": "redis", "subscription": cached}
+
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT id, user_id, plan_code, status, start_at, end_at, features
+                FROM subscriptions
+                WHERE user_id = :user_id
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"user_id": user_id},
+        )
+    ).mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    return {"source": "postgres", "subscription": dict(row)}
 
 
 @app.get("/v1/subscriptions/{user_id}/entitlements")
 async def entitlements(user_id: UUID, db: AsyncSession = Depends(get_db_session)):
-    await _ensure_seed_data(db)
-    data = {}
-    for key in PLAN_MATRIX["Premium"].keys():
-        data[key] = await resolve_feature_access(db, str(user_id), key)
-    return {"user_id": str(user_id), "features": data}
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT plan_code, features
+                FROM subscriptions
+                WHERE user_id = :user_id AND status = 'active'
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"user_id": user_id},
+        )
+    ).mappings().first()
 
+    if not row:
+        return {"plan": "none", "features": {}, "execution_mode": ["PAPER"]}
 
-@app.post("/v1/subscriptions/override")
-async def feature_override(payload: OverrideIn, db: AsyncSession = Depends(get_db_session)):
-    feature_id = (
-        await db.execute(text("SELECT id FROM features WHERE feature_key=:key"), {"key": payload.feature_key})
-    ).scalar_one_or_none()
-    if not feature_id:
-        raise HTTPException(status_code=404, detail="Feature not found")
-    await db.execute(
-        text(
-            """
-            INSERT INTO user_feature_overrides(user_id, feature_id, enabled)
-            VALUES (:user_id, :feature_id, :enabled)
-            ON CONFLICT (user_id, feature_id)
-            DO UPDATE SET enabled = EXCLUDED.enabled
-            """
-        ),
-        payload.model_dump(mode="json") | {"feature_id": feature_id},
-    )
-    return {"ok": True}
+    features = row["features"]
+    execution_mode = ["PAPER", "LIVE"] if features.get("live_trading") else ["PAPER"]
+    return {"plan": row["plan_code"], "features": features, "execution_mode": execution_mode}
 
 
 @app.get("/health")

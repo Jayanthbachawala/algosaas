@@ -11,7 +11,7 @@ from services.common.database import get_db_session
 from services.common.kafka_client import KafkaProducerClient
 from services.common.redis_client import redis_client
 
-app = FastAPI(title="AIModelService", version="2.0.0")
+app = FastAPI(title="AIModelService", version="1.0.0")
 producer = KafkaProducerClient()
 
 
@@ -20,15 +20,6 @@ class TrainRequest(BaseModel):
     model_type: str
     artifact_uri: str
     training_window_days: int = 180
-    schedule: str = "daily"
-
-
-class PerformanceIn(BaseModel):
-    model_name: str
-    win_rate: float
-    profit_factor: float
-    sharpe_ratio: float
-    max_drawdown: float
 
 
 @app.on_event("startup")
@@ -50,7 +41,7 @@ async def request_training(payload: TrainRequest, db: AsyncSession = Depends(get
             text(
                 """
                 INSERT INTO model_registry(model_name, model_type, version, artifact_uri, metrics, status)
-                VALUES (:model_name, :model_type, :version, :artifact_uri, CAST(:metrics as jsonb), 'TRAINING')
+                VALUES (:model_name, :model_type, :version, :artifact_uri, '{}'::jsonb, 'TRAINING')
                 RETURNING id, model_name, model_type, version, status, created_at
                 """
             ),
@@ -59,7 +50,6 @@ async def request_training(payload: TrainRequest, db: AsyncSession = Depends(get
                 "model_type": payload.model_type,
                 "version": version,
                 "artifact_uri": payload.artifact_uri,
-                "metrics": '{"schedule":"%s"}' % payload.schedule,
             },
         )
     ).mappings().one()
@@ -70,38 +60,10 @@ async def request_training(payload: TrainRequest, db: AsyncSession = Depends(get
         "model_type": row["model_type"],
         "version": row["version"],
         "training_window_days": payload.training_window_days,
-        "schedule": payload.schedule,
         "requested_at": row["created_at"].isoformat(),
     }
     await producer.send(settings.model_training_requested_topic, event)
     return event
-
-
-@app.post("/v1/models/performance")
-async def track_performance(payload: PerformanceIn):
-    degraded = payload.win_rate < 0.45 or payload.profit_factor < 1.2 or payload.sharpe_ratio < 0.8 or payload.max_drawdown < -8
-    perf_key = f"model:perf:{payload.model_name}"
-    await redis_client.hset(
-        perf_key,
-        mapping={
-            "win_rate": str(payload.win_rate),
-            "profit_factor": str(payload.profit_factor),
-            "sharpe_ratio": str(payload.sharpe_ratio),
-            "max_drawdown": str(payload.max_drawdown),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        },
-    )
-
-    if degraded:
-        retrain_event = {
-            "reason": "performance_degradation",
-            "model_name": payload.model_name,
-            "metrics": payload.model_dump(),
-        }
-        await producer.send(settings.model_training_requested_topic, retrain_event)
-        return {"degraded": True, "action": "retraining_triggered", "event": retrain_event}
-
-    return {"degraded": False, "action": "none"}
 
 
 @app.post("/v1/models/deploy/{model_id}")

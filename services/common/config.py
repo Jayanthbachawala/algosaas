@@ -10,17 +10,10 @@ class ServiceSettings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     kafka_bootstrap_servers: str = "localhost:9092"
 
-    prediction_service_url: str = "http://localhost:8007"
-    risk_service_url: str = "http://localhost:8010"
-
     market_tick_topic: str = "market.tick.normalized"
     option_chain_topic: str = "market.optionchain.delta"
     scanner_topic: str = "scanner.opportunity"
     features_topic: str = "features.ready"
-    features_enriched_topic: str = "features.enriched"
-    options_flow_topic: str = "optionsflow.signal"
-    orderflow_signal_topic: str = "orderflow.signal"
-    volatility_surface_topic: str = "volsurface.signal"
     prediction_topic: str = "prediction.generated"
     signal_topic: str = "signal.generated"
     trade_intent_topic: str = "trade.intent"

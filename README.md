@@ -1,29 +1,21 @@
 # AlgoSaaS - Production AI Options Trading Platform (India)
 
-Enterprise-grade microservices architecture for AI-assisted options trading, SaaS subscriptions, broker integrations, risk controls, and AI insights.
+Enterprise-grade microservices architecture for AI-assisted options trading, paper/live execution, broker abstraction, RL feedback loops, and SaaS monetization.
 
-## Implemented Platform Layers
-- AI Trading Brain v3 (ensemble + options flow + vol surface + order flow + RL + meta-decision)
-- SaaS commercial layer (signup, plans, entitlements, admin controls, notifications)
-- Trading platform layer (signals, paper/live execution, risk management, broker gateway)
-- Frontend layer (React dashboard + marketing website)
+## Key Design Artifacts
+- `docs/production-architecture.md` - complete architecture and service design
+- `database/schema.sql` - PostgreSQL production schema
+- `docs/deployment-guide.md` - AWS deployment blueprint
+- `docs/dashboard-layout.md` - frontend dashboard specification
+- `docs/backend-microservices-implementation.md` - backend/frontend implementation details
+- `.env.example` - service routing + broker OAuth configuration template
 
-## Key Artifacts
-- `database/schema.sql`
-- `docs/backend-microservices-implementation.md`
-- `docs/production-architecture.md`
-- `docs/deployment-guide.md`
-- `docs/dashboard-layout.md`
-- `docs/production-infrastructure.md`
-- `.env.example`
+## Implemented Components
+- Phase-1 to Phase-4 services and dashboard
+- API Gateway + WebSocket stream
+- Broker integrations: Zerodha, Upstox, Dhan, Shoonya (OAuth, refresh, order, positions, execution confirmation)
 
 ## Local Infrastructure
 ```bash
 docker compose -f infra/local/docker-compose.yml up -d
-```
-
-## Production Kubernetes Deployment
-```bash
-kubectl apply -k infra/k8s/prod
-helm upgrade --install algosaas infra/helm/algosaas -n algosaas --create-namespace
 ```
