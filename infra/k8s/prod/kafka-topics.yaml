@@ -1,0 +1,78 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: market.tick
+  namespace: algosaas
+  labels:
+    strimzi.io/cluster: algosaas-kafka
+spec:
+  partitions: 12
+  replicas: 3
+  config:
+    retention.ms: 86400000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: features.ready
+  namespace: algosaas
+  labels:
+    strimzi.io/cluster: algosaas-kafka
+spec:
+  partitions: 12
+  replicas: 3
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: features.enriched
+  namespace: algosaas
+  labels:
+    strimzi.io/cluster: algosaas-kafka
+spec:
+  partitions: 12
+  replicas: 3
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: signal.generated
+  namespace: algosaas
+  labels:
+    strimzi.io/cluster: algosaas-kafka
+spec:
+  partitions: 24
+  replicas: 3
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: optionsflow.signal
+  namespace: algosaas
+  labels:
+    strimzi.io/cluster: algosaas-kafka
+spec:
+  partitions: 12
+  replicas: 3
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: volsurface.signal
+  namespace: algosaas
+  labels:
+    strimzi.io/cluster: algosaas-kafka
+spec:
+  partitions: 12
+  replicas: 3
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: orderflow.signal
+  namespace: algosaas
+  labels:
+    strimzi.io/cluster: algosaas-kafka
+spec:
+  partitions: 12
+  replicas: 3

@@ -1,0 +1,32 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: algosaas
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: signal-engine-pdb
+  namespace: algosaas
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: signal-engine-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: prediction-pdb
+  namespace: algosaas
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: prediction-service

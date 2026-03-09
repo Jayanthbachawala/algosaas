@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: algosaas
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secrets.example.yaml
+  - ingress.yaml
+  - pdb.yaml
+  - frontends.yaml
+  - data-plane.yaml
+  - kafka-topics.yaml
+  - api-gateway.yaml
+  - user-service.yaml
+  - auth-service.yaml
+  - subscription-service.yaml
+  - billing-service.yaml
+  - portfolio-service.yaml
+  - trade-history-service.yaml
+  - feature-engineering-service.yaml
+  - prediction-service.yaml
+  - signal-engine-service.yaml
+  - reinforcement-learning-service.yaml
+  - risk-management-service.yaml
+  - broker-gateway-service.yaml
+  - options-flow-service.yaml
+  - volatility-surface-service.yaml
+  - order-flow-service.yaml
+  - notification-service.yaml
+  - kill-switch-service.yaml
+  - admin-service.yaml
+  - market-data-service.yaml
+  - option-chain-service.yaml
+  - scanner-service.yaml
+  - paper-trading-service.yaml
+  - ai-model-service.yaml

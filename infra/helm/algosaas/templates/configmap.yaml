@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: algosaas-config
+data:
+  ENVIRONMENT: production
+  POSTGRES_HOST: {{ .Values.global.postgresHost | quote }}
+  POSTGRES_PORT: {{ .Values.global.postgresPort | quote }}
+  POSTGRES_DB: {{ .Values.global.postgresDb | quote }}
+  REDIS_URL: {{ .Values.global.redisUrl | quote }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ .Values.global.kafkaBootstrapServers | quote }}

@@ -1,0 +1,59 @@
+name: Build-Test-Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r services/requirements.txt pytest
+      - run: pytest -q
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [api-gateway,user-service,auth-service,subscription-service,billing-service,portfolio-service,trade-history-service,feature-engineering-service,prediction-service,signal-engine-service,reinforcement-learning-service,risk-management-service,broker-gateway-service,options-flow-service,volatility-surface-service,order-flow-service,notification-service,kill-switch-service,admin-service,market-data-service,option-chain-service,scanner-service,paper-trading-service,ai-model-service]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Set kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+      - name: Deploy chart
+        run: |
+          helm upgrade --install algosaas infra/helm/algosaas \
+            --namespace algosaas --create-namespace \
+            --set secrets.postgresPassword=${{ secrets.POSTGRES_PASSWORD }} \
+            --set secrets.jwtSecret=${{ secrets.JWT_SECRET }}
